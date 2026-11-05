@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realm of Shadows - 3D Survival RPG Strategy</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #050508;
+            color: #fff;
+        }
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        
+        /* Glassmorphism UI */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Custom Progress Bars */
+        .bar-container {
+            position: relative;
+            background: rgba(0,0,0,0.6);
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .bar-fill {
+            height: 100%;
+            transition: width 0.2s ease-out;
+        }
+        
+        /* Crosshair */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 10px;
+            height: 10px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+        #crosshair::before { top: 4px; left: 0; width: 10px; height: 2px; }
+        #crosshair::after { top: 0; left: 4px; width: 2px; height: 10px; }
+
+        /* Minimap canvas */
+        #minimap {
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            background: rgba(0, 20, 10, 0.8);
+        }
+
+        /* Hotbar & Item Slots */
+        .item-slot {
+            width: 54px;
+            height: 54px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .item-slot:hover, .item-slot.active {
+            border-color: #38bdf8;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+            transform: translateY(-2px);
+        }
+
+        /* Floating Damage Text */
+        .damage-text {
+            position: absolute;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            pointer-events: none;
+            animation: floatUp 0.8s ease-out forwards;
+            text-shadow: 0 0 4px #000;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-40px) scale(1.2); }
+        }
+
+        /* Custom Scrollbar for Inventory */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.5); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container" class="w-full h-screen relative"></div>
+
+    <!-- Crosshair -->
+    <div id="crosshair"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 z-10">
+        
+        <!-- Top Header Info -->
+        <div class="flex justify-between items-start">
+            <!-- Left: Player Vitals & RPG Info -->
+            <div class="glass-panel p-4 rounded-xl w-72 space-y-2 pointer-events-auto">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="font-orbitron text-amber-400 font-bold text-sm tracking-wider">HERO LVL <span id="player-lvl">1</span></span>
+                    <span class="text-xs text-slate-300 font-mono" id="xp-text">XP: 0/100</span>
+                </div>
+                <!-- XP Bar -->
+                <div class="bar-container h-1.5 mb-3">
+                    <div id="xp-bar" class="bar-fill bg-amber-400" style="width: 0%;"></div>
+                </div>
+
+                <!-- Stats Sliders -->
+                <!-- Health -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-red-400"><i class="fa-solid font-bold fa-heart mr-1"></i> MÁU</span>
+                        <span id="hp-text">100/100</span>
+                    </div>
+                    <div class="bar-container h-3">
+                        <div id="hp-bar" class="bar-fill bg-red-500" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Hunger -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-amber-500"><i class="fa-solid fa-drumstick-bite mr-1"></i> THỨC ĂN</span>
+                        <span id="hunger-text">100/100</span>
+                    </div>
+                    <div class="bar-container h-2.5">
+                        <div id="hunger-bar" class="bar-fill bg-amber-500" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Thirst -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-cyan-400"><i class="fa-solid fa-droplet mr-1"></i> NƯỚC UỐNG</span>
+                        <span id="thirst-text">100/100</span>
+                    </div>
+                    <div class="bar-container h-2.5">
+                        <div id="thirst-bar" class="bar-fill bg-cyan-400" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Stamina -->
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span class="text-emerald-400"><i class="fa-solid fa-bolt mr-1"></i> THỂ LỰC</span>
+                        <span id="stamina-text">100/100</span>
+                    </div>
+                    <div class="bar-container h-2">
+                        <div id="stamina-bar" class="bar-fill bg-emerald-400" style="width: 100%;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center: World Time & Wave Status -->
+            <div class="text-center flex flex-col items-center">
+                <div class="glass-panel px-6 py-2 rounded-full flex items-center space-x-4 mb-2">
+                    <span id="time-icon" class="text-amber-400 text-xl"><i class="fa-solid fa-sun"></i></span>
+                    <span id="time-text" class="font-orbitron text-lg font-bold tracking-widest text-slate-100">BAN NGÀY 12:00</span>
+                </div>
+                <div id="wave-banner" class="glass-panel px-5 py-1.5 rounded-lg border-red-500/30 text-red-400 font-orbitron font-bold text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved"></i> WAVE <span id="wave-num">1</span> - QUÁI VẬT TẤN CÔNG SAU: <span id="wave-timer">60</span>s
+                </div>
+            </div>
+
+            <!-- Right: Radar / Minimap -->
+            <div class="flex flex-col items-end gap-2">
+                <canvas id="minimap" width="120" height="120"></canvas>
+                <button id="btn-guide" class="pointer-events-auto glass-panel px-3 py-1.5 rounded-lg text-xs hover:bg-slate-700/50 transition" onclick="toggleGuideModal()">
+                    <i class="fa-solid fa-circle-question mr-1"></i> Hướng Dẫn [H]
+                </button>
+                <!-- Notification Container cố định góc dưới Minimap -->
+                <div id="notif-container" class="flex flex-col items-end space-y-1.5 max-h-48 overflow-hidden pointer-events-none w-60"></div>
+            </div>
+        </div>
+
+        <!-- Bottom Center: Hotbar & Quick Actions -->
+        <div class="flex flex-col items-center gap-2">
+            <!-- Action prompt / Interaction -->
+            <div id="interact-prompt" class="hidden glass-panel px-4 py-1.5 rounded-full text-xs font-semibold text-amber-300 animate-pulse border-amber-400/40">
+                Nhấn <span class="bg-amber-500/30 px-2 py-0.5 rounded text-white font-mono">E</span> để nhặt đồ / thu hoạch / tương tác
+            </div>
+
+            <!-- Build / Weapon Selection Slots -->
+            <div class="glass-panel p-2 rounded-2xl flex gap-2 pointer-events-auto overflow-x-auto max-w-full">
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative active" data-slot="1" onclick="selectSlot(1)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">1</span>
+                    <i class="fa-solid fa-axe text-xl text-amber-500"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Rìu Gỗ</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="2" onclick="selectSlot(2)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">2</span>
+                    <i class="fa-solid fa-pickaxe text-xl text-slate-300"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Cuốc Đá</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="3" onclick="selectSlot(3)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">3</span>
+                    <i class="fa-solid fa-shield-cat text-xl text-cyan-300"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Kiếm Thép</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="4" onclick="selectSlot(4)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">4</span>
+                    <i class="fa-solid fa-house-chimney text-xl text-amber-400"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Chỗ Trú</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="5" onclick="selectSlot(5)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">5</span>
+                    <i class="fa-solid fa-crosshairs text-xl text-emerald-400"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Tháp Tên</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="6" onclick="selectSlot(6)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">6</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-xl text-purple-400"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Tháp Phép</span>
+                </div>
+                <div class="item-slot rounded-xl flex flex-col items-center justify-center relative" data-slot="7" onclick="selectSlot(7)">
+                    <span class="absolute top-1 left-1.5 text-[10px] text-slate-400 font-mono">7</span>
+                    <i class="fa-solid fa-dna text-xl text-rose-400"></i>
+                    <span class="text-[9px] font-bold mt-1 text-slate-300">Bẫy Gai</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toggleable Crafting & Inventory Modal (Key: B or TAB) -->
+    <div id="crafting-modal" class="hidden absolute inset-0 bg-black/70 backdrop-blur-md z-30 flex items-center justify-center p-6">
+        <div class="glass-panel w-full max-w-4xl max-h-[85vh] rounded-2xl p-6 flex flex-col gap-4 border-cyan-500/30">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center border-b border-slate-700/60 pb-3">
+                <h2 class="font-orbitron text-xl text-cyan-400 font-bold tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-hammer"></i> HỆ THỐNG CHẾ TẠO & KHAI THÁC
+                </h2>
+                <button onclick="toggleCraftingModal()" class="text-slate-400 hover:text-white text-xl"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <!-- Content Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden h-full">
+                <!-- Left: Resource Inventory -->
+                <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-3">
+                    <h3 class="font-orbitron text-xs text-slate-400 font-semibold tracking-wider uppercase">Kho Tài Nguyên</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="flex items-center gap-3 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/50">
+                            <i class="fa-solid fa-tree text-amber-600 text-2xl"></i>
+                            <div>
+                                <div class="text-xs text-slate-400">Gỗ</div>
+                                <div id="res-wood" class="font-bold text-white text-base">0</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/50">
+                            <i class="fa-solid fa-cubes-stacked text-slate-400 text-2xl"></i>
+                            <div>
+                                <div class="text-xs text-slate-400">Đá</div>
+                                <div id="res-stone" class="font-bold text-white text-base">0</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/50">
+                            <i class="fa-solid fa-apple-whole text-red-400 text-2xl"></i>
+                            <div>
+                                <div class="text-xs text-slate-400">Thức Ăn</div>
+                                <div id="res-food" class="font-bold text-white text-base">0</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 bg-slate-800/80 p-2.5 rounded-lg border border-slate-700/50">
+                            <i class="fa-solid fa-gem text-cyan-400 text-2xl"></i>
+                            <div>
+                                <div class="text-xs text-slate-400">Đá Phép</div>
+                                <div id="res-crystal" class="font-bold text-white text-base">0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Consumables -->
+                    <h3 class="font-orbitron text-xs text-slate-400 font-semibold tracking-wider uppercase pt-2">Vật Phẩm Hồi Phục</h3>
+                    <button onclick="consumeFood()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white p-2.5 rounded-lg text-xs font-bold transition flex justify-between items-center">
+                        <span><i class="fa-solid fa-utensils mr-2"></i> Ăn Thức Ăn (+30 Đói, +15 HP)</span>
+                        <span class="text-[10px] bg-black/30 px-2 py-0.5 rounded">Cần 1 Thức ăn</span>
+                    </button>
+                </div>
+
+                <!-- Right: Craftable Recipes -->
+                <div class="md:col-span-2 overflow-y-auto space-y-3 pr-2">
+                    <h3 class="font-orbitron text-xs text-slate-400 font-semibold tracking-wider uppercase">Công Thức Chế Tạo</h3>
+
+                    <!-- Shelter / Chỗ trú -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-amber-950/80 rounded-lg flex items-center justify-center border border-amber-500/40 text-amber-400 text-xl">
+                                <i class="fa-solid fa-house-chimney"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Nhà Trú Ẩn Gỗ</h4>
+                                <p class="text-xs text-slate-400">Nơi trú ẩn an toàn ban đêm. Cần slot 4 để đặt.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Gỗ: 25</span> <span>Đá: 15</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('shelter')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Chế Tạo
+                        </button>
+                    </div>
+
+                    <!-- Water Well / Giếng Nước -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-blue-950/80 rounded-lg flex items-center justify-center border border-blue-500/40 text-blue-400 text-xl">
+                                <i class="fa-solid fa-faucet-drip"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Giếng Nước Sạch</h4>
+                                <p class="text-xs text-slate-400">Đặt giếng nước gần căn cứ để uống nước bất cứ lúc nào.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Đá: 20</span> <span>Gỗ: 10</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('well')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Chế Tạo
+                        </button>
+                    </div>
+
+                    <!-- Arrow Tower -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-emerald-950/80 rounded-lg flex items-center justify-center border border-emerald-500/40 text-emerald-400 text-xl">
+                                <i class="fa-solid fa-crosshairs"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Tháp Tên Phòng Thủ</h4>
+                                <p class="text-xs text-slate-400">Tự động bắn tên quái vật trong tầm. Cần slot 5 để đặt.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Gỗ: 15</span> <span>Đá: 10</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('tower_arrow')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Chế Tạo
+                        </button>
+                    </div>
+
+                    <!-- Magic Tower -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-purple-950/80 rounded-lg flex items-center justify-center border border-purple-500/40 text-purple-400 text-xl">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Tháp Phép Cổ Đại</h4>
+                                <p class="text-xs text-slate-400">Bắn tia phép sát thương diện rộng. Cần slot 6 để đặt.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Gỗ: 20</span> <span>Đá: 25</span> <span>Đá Phép: 2</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('tower_magic')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Chế Tạo
+                        </button>
+                    </div>
+
+                    <!-- Spike Trap -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-rose-950/80 rounded-lg flex items-center justify-center border border-rose-500/40 text-rose-400 text-xl">
+                                <i class="fa-solid fa-dna"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Bẫy Gai Đất</h4>
+                                <p class="text-xs text-slate-400">Gây sát thương nặng khi quái dẫm vào. Cần slot 7 để đặt.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Gỗ: 10</span> <span>Đá: 15</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('trap_spike')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Chế Tạo
+                        </button>
+                    </div>
+
+                    <!-- Upgrade Steel Sword -->
+                    <div class="bg-slate-800/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-700/50 flex justify-between items-center transition">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 bg-blue-950/80 rounded-lg flex items-center justify-center border border-blue-500/40 text-blue-400 text-xl">
+                                <i class="fa-solid fa-shield-cat"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-slate-100">Nâng Cấp Kiếm Cổ Đại (+15 Sát thương)</h4>
+                                <p class="text-xs text-slate-400">Tăng mạnh sức mạnh tấn công cận chiến của nhân vật.</p>
+                                <div class="flex gap-3 text-[11px] text-amber-300 font-mono mt-1">
+                                    <span>Đá: 30</span> <span>Đá Phép: 5</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="craftItem('upgrade_sword')" class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
+                            Nâng Cấp
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide Modal -->
+    <div id="guide-modal" class="hidden absolute inset-0 bg-black/80 backdrop-blur-md z-40 flex items-center justify-center p-6">
+        <div class="glass-panel w-full max-w-lg rounded-2xl p-6 space-y-4 border-amber-500/30">
+            <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+                <h3 class="font-orbitron text-lg text-amber-400 font-bold"><i class="fa-solid fa-gamepad mr-2"></i>HƯỚNG DẪN ĐIỀU KHIỂN & LỐI CHƠI</h3>
+                <button onclick="toggleGuideModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-2 text-xs text-slate-300">
+                <p><b class="text-white">WASD / Phím mũi tên:</b> Di chuyển nhân vật</p>
+                <p><b class="text-white">Xoay Chuột:</b> Xoay camera góc nhìn 3D (Nhấn giữ chuột)</p>
+                <p><b class="text-white">Chuột Trái (Left Click):</b> Chặt cây, đập đá, Tấn công quái vật / Đặt tháp</p>
+                <p><b class="text-white">Phím E:</b> Nhặt vật phẩm rơi / Uống nước / Tương tác</p>
+                <p><b class="text-white">Phím G, B hoặc TAB:</b> Mở Bảng Chế Tạo / Kho đồ</p>
+                <p><b class="text-white">Phím 1 - 7:</b> Chuyển đổi Vũ khí & Tháp phòng thủ</p>
+                <hr class="border-slate-800 my-2">
+                <p class="text-amber-300 font-semibold">Mục tiêu Sinh tồn & Chiến thuật:</p>
+                <p>1. Ban ngày hãy nhanh chóng chặt Cây, đập Đá và thu hái Thức ăn trên đảo.</p>
+                <p>2. Dùng nguyên liệu để chế tạo các Tháp phòng thủ và Bẫy.</p>
+                <p>3. Ban đêm quái vật bóng đêm sẽ xuất hiện theo từng Đợt (Wave) tấn công bạn! Hãy dùng vũ khí và tháp để bảo vệ bản thân.</p>
+            </div>
+            <button onclick="toggleGuideModal()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 rounded-xl transition">
+                Đã Hiểu, Bắt Đầu!
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-modal" class="hidden absolute inset-0 bg-red-950/90 backdrop-blur-lg z-50 flex flex-col items-center justify-center space-y-6">
+        <h1 class="font-orbitron text-5xl font-black text-red-500 tracking-widest animate-pulse">BẠN ĐÃ HY SINH</h1>
+        <p class="text-slate-300 text-base" id="game-over-reason">Bị quái vật bóng đêm hạ gục...</p>
+        <div class="glass-panel p-6 rounded-2xl text-center space-y-2 font-orbitron">
+            <div>Số Đợt Quái Sống Sống Sống: <span id="final-wave" class="text-amber-400 font-bold">1</span></div>
+            <div>Cấp Độ Đạt Được: <span id="final-lvl" class="text-cyan-400 font-bold">1</span></div>
+        </div>
+        <button onclick="location.reload()" class="bg-red-600 hover:bg-red-500 text-white font-orbitron font-bold px-8 py-3 rounded-xl transition shadow-lg shadow-red-600/50">
+            CHƠI LẠI TỪ ĐẦU
+        </button>
+    </div>
+
+    <!-- GAME LOGIC JAVASCRIPT -->
+    <script>
+        // --- GAME CONFIG & STATE ---
+        const CONFIG = {
+            worldSize: 180,
+            treeCount: 45,
+            rockCount: 35,
+            dayDuration: 60, // seconds per day phase
+            nightDuration: 45 // seconds per night phase
+        };
+
+        const state = {
+            time: 0,
+            isNight: false,
+            dayCount: 1,
+            wave: 1,
+            waveTimer: CONFIG.dayDuration,
+            
+            // Player stats
+            hp: 100, maxHp: 100,
+            hunger: 100, maxHunger: 100,
+            thirst: 100, maxThirst: 100,
+            stamina: 100, maxStamina: 100,
+            lvl: 1, xp: 0, xpToNextLvl: 100,
+            atkDamage: 25,
+            
+            // Inventory / Resources
+            wood: 35,
+            stone: 30,
+            food: 5,
+            crystal: 2,
+
+            // Crafted items
+            towersArrow: 1,
+            towersMagic: 0,
+            trapsSpike: 1,
+            shelters: 1,
+
+            activeSlot: 1, // 1: Axe, 2: Pickaxe, 3: Sword, 4: Shelter, 5: Arrow Tower, 6: Magic Tower, 7: Spike Trap
+            isDead: false
+        };
+
+        // THREE.JS Globals
+        let scene, camera, renderer;
+        let dirLight, ambientLight, skyMesh;
+        let playerGroup, playerModel, toolMesh, axeGroup, pickaxeGroup, swordGroup;
+        let leftArm, rightArm, leftLeg, rightLeg;
+        let terrainMesh;
+        let isAttacking = false;
+        const wells = []; // Giếng nước
+        const droppedItems = []; // Danh sách vật phẩm rơi từ quái vật
+        
+        // Game Object Arrays
+        const resources = []; // Trees, Rocks, Bushes
+        const enemies = [];
+        const buildings = [];
+        const particles = [];
+        const projectiles = [];
+
+        // Camera control variables
+        let cameraAngleX = 0;
+        let cameraAngleY = 0.3;
+        let isMouseDown = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        // Dynamic Animation / Clock
+        const clock = new THREE.Clock();
+
+        // Init Game on Load
+        window.onload = function() {
+            initThree();
+            createTerrain();
+            createEnvironment();
+            createPlayer();
+            setupEventListeners();
+            updateUI();
+            
+            // Start main game loop
+            animate();
+
+            // Periodic Game State Tick (Survival stats degradation & time)
+            setInterval(gameTick, 1000);
+        };
+
+        // --- THREE.JS INITIALIZATION ---
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.008);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+            dirLight.position.set(60, 100, 40);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 250;
+            const d = 100;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Skybox Mesh
+            const skyGeo = new THREE.SphereGeometry(400, 32, 15);
+            const skyMat = new THREE.MeshBasicMaterial({ color: 0x87ceeb, side: THREE.BackSide });
+            skyMesh = new THREE.Mesh(skyGeo, skyMat);
+            scene.add(skyMesh);
+        }
+
+        // --- TERRAIN & ENVIRONMENT CREATION ---
+        function getTerrainHeight(x, z) {
+            // Tính toán chính xác độ cao terrain từ công thức sóng địa hình
+            const dist = Math.sqrt(x * x + z * z);
+            let y = Math.sin(x * 0.05) * Math.cos(z * 0.05) * 2;
+            const size = CONFIG.worldSize;
+            if (dist > size * 0.35) {
+                y -= Math.pow((dist - size * 0.35) * 0.15, 2);
+            }
+            return y;
+        }
+
+        function createTerrain() {
+            const size = CONFIG.worldSize;
+            const geo = new THREE.PlaneGeometry(size, size, 64, 64);
+            geo.rotateX(-Math.PI / 2);
+
+            // Deform terrain vertices for realistic island feel
+            const pos = geo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const z = pos.getZ(i);
+                const y = getTerrainHeight(x, z);
+                pos.setY(i, y);
+            }
+            geo.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x3d7e35,
+                roughness: 0.8,
+                metalness: 0.1
+            });
+
+            terrainMesh = new THREE.Mesh(geo, mat);
+            terrainMesh.receiveShadow = true;
+            scene.add(terrainMesh);
+
+            // Water Ocean surrounding
+            const waterGeo = new THREE.PlaneGeometry(500, 500);
+            waterGeo.rotateX(-Math.PI / 2);
+            const waterMat = new THREE.MeshStandardMaterial({
+                color: 0x0284c7,
+                roughness: 0.1,
+                metalness: 0.8,
+                transparent: true,
+                opacity: 0.75
+            });
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.position.y = -2.5;
+            water.name = "oceanWater";
+            scene.add(water);
+
+            // Add Ambient Floating Particles (Sparks/Leaves)
+            createAmbientParticles();
+        }
+
+        // --- HELPER FUNCTION FOR RANDOM ISLAND POSITION ---
+        function getRandomIslandPosition(minRadius = 10, maxRadius = 50) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = minRadius + Math.random() * (maxRadius - minRadius);
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            return { x, z };
+        }
+
+        function createTree(x, z) {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            // Trunk
+            const trunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 2.5, 8);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.9 });
+            const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+            trunk.position.y = 1.25;
+            trunk.castShadow = true;
+            group.add(trunk);
+
+            // Foliage
+            const foliageGeo = new THREE.ConeGeometry(2, 4, 7);
+            const foliageMat = new THREE.MeshStandardMaterial({ color: 0x1e5e27, roughness: 0.7 });
+            const foliage = new THREE.Mesh(foliageGeo, foliageMat);
+            foliage.position.y = 3.8;
+            foliage.castShadow = true;
+            group.add(foliage);
+
+            scene.add(group);
+            resources.push({ type: 'tree', mesh: group, hp: 100, maxHp: 100, x, z });
+        }
+
+        function createRock(x, z) {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            const rockGeo = new THREE.DodecahedronGeometry(1 + Math.random() * 0.5, 1);
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
+            const rock = new THREE.Mesh(rockGeo, rockMat);
+            rock.position.y = 0.6;
+            rock.rotation.set(Math.random(), Math.random(), Math.random());
+            rock.castShadow = true;
+            group.add(rock);
+
+            scene.add(group);
+            resources.push({ type: 'rock', mesh: group, hp: 120, maxHp: 120, x, z });
+        }
+
+        function createTowerMesh(x, z, type = 'arrow') {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            const baseGeo = new THREE.CylinderGeometry(0.8, 1, 3, 8);
+            const baseMat = new THREE.MeshStandardMaterial({ color: type === 'arrow' ? 0x065f46 : 0x581c87 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.y = 1.5;
+            base.castShadow = true;
+            group.add(base);
+
+            const topGeo = new THREE.SphereGeometry(0.6, 8, 8);
+            const topMat = new THREE.MeshStandardMaterial({ color: type === 'arrow' ? 0x34d399 : 0xc084fc, emissive: type === 'arrow' ? 0x059669 : 0x7e22ce });
+            const top = new THREE.Mesh(topGeo, topMat);
+            top.position.y = 3.2;
+            group.add(top);
+
+            scene.add(group);
+            buildings.push({ type: type === 'arrow' ? 'tower_arrow' : 'tower_magic', mesh: group, x, z, atkCd: 0 });
+            showNotification(`Đã đặt ${type === 'arrow' ? 'Tháp Tên' : 'Tháp Phép'}!`);
+        }
+
+        function killEnemy(enemy) {
+            // Quái vật rơi vật phẩm khi bị hạ gục
+            spawnLootDrop(enemy.mesh.position.x, enemy.mesh.position.z);
+
+            scene.remove(enemy.mesh);
+            const index = enemies.indexOf(enemy);
+            if (index > -1) enemies.splice(index, 1);
+            state.xp += 35;
+            if (state.xp >= state.xpToNextLvl) {
+                state.lvl++;
+                state.xp -= state.xpToNextLvl;
+                state.xpToNextLvl = Math.floor(state.xpToNextLvl * 1.5);
+                state.maxHp += 20;
+                state.hp = state.maxHp;
+                state.atkDamage += 10;
+                showNotification(`LEVEL UP! Cấp ${state.lvl} (+10 Atk, +20 HP)`);
+            }
+            updateUI();
+        }
+
+        function spawnLootDrop(x, z) {
+            const types = ['food', 'crystal', 'wood', 'stone'];
+            const lootType = types[Math.floor(Math.random() * types.length)];
+            const amount = Math.floor(Math.random() * 3) + 1;
+
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY + 0.3, z);
+
+            // Item Bag / Crystal Mesh
+            const geo = new THREE.DodecahedronGeometry(0.3);
+            const color = lootType === 'crystal' ? 0xc084fc : (lootType === 'food' ? 0xef4444 : (lootType === 'wood' ? 0xd97706 : 0x94a3b8));
+            const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.4 });
+            const mesh = new THREE.Mesh(geo, mat);
+            group.add(mesh);
+
+            scene.add(group);
+            droppedItems.push({ mesh: group, type: lootType, amount: amount, x: x, z: z, rot: 0 });
+            spawnDamageText(new THREE.Vector3(x, terrainY, z), `Rơi ${lootType.toUpperCase()}!`, "#fde047");
+        }
+
+        function createAmbientParticles() {
+            const particleGeo = new THREE.BufferGeometry();
+            const count = 150;
+            const posArray = new Float32Array(count * 3);
+
+            for(let i=0; i<count*3; i+=3) {
+                posArray[i] = (Math.random() - 0.5) * 120;
+                posArray[i+1] = Math.random() * 15 + 1;
+                posArray[i+2] = (Math.random() - 0.5) * 120;
+            }
+
+            particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const particleMat = new THREE.PointsMaterial({
+                size: 0.3,
+                color: 0xfde047,
+                transparent: true,
+                opacity: 0.6
+            });
+
+            const particleSystem = new THREE.Points(particleGeo, particleMat);
+            particleSystem.name = "ambientParticles";
+            scene.add(particleSystem);
+        }
+
+        function createEnvironment() {
+            // Spawn Wells / Giếng nước tự nhiên trên đảo
+            createWell(5, -5);
+            createWell(-15, 12);
+
+            // Spawn Trees
+            for (let i = 0; i < CONFIG.treeCount; i++) {
+                const pos = getRandomIslandPosition(15, CONFIG.worldSize * 0.35);
+                createTree(pos.x, pos.z);
+            }
+
+            // Spawn Rocks
+            for (let i = 0; i < CONFIG.rockCount; i++) {
+                const pos = getRandomIslandPosition(10, CONFIG.worldSize * 0.35);
+                createRock(pos.x, pos.z);
+            }
+        }
+
+        function createWell(x, z) {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            // Well Stone Base
+            const baseGeo = new THREE.CylinderGeometry(1.2, 1.4, 1, 12);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.position.y = 0.5;
+            base.castShadow = true;
+            group.add(base);
+
+            // Inner Water
+            const waterGeo = new THREE.CylinderGeometry(1, 1, 0.8, 12);
+            const waterMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, opacity: 0.8, transparent: true });
+            const water = new THREE.Mesh(waterGeo, waterMat);
+            water.position.y = 0.5;
+            group.add(water);
+
+            // Roof Support Pillars
+            const pillarGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.8);
+            const pillarMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+            const p1 = new THREE.Mesh(pillarGeo, pillarMat); p1.position.set(-0.9, 1.4, 0);
+            const p2 = new THREE.Mesh(pillarGeo, pillarMat); p2.position.set(0.9, 1.4, 0);
+            group.add(p1); group.add(p2);
+
+            // Roof
+            const roofGeo = new THREE.ConeGeometry(1.6, 0.8, 4);
+            roofGeo.rotateY(Math.PI / 4);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0xb45309 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.y = 2.4;
+            group.add(roof);
+
+            scene.add(group);
+            wells.push({ mesh: group, x: x, z: z });
+        }
+
+        // --- TOOLS & WEAPONS MODELS ---
+        function createTools() {
+            // 1. Rìu Khai Thác (Axe)
+            axeGroup = new THREE.Group();
+            const handleGeo = new THREE.CylinderGeometry(0.04, 0.04, 1, 8);
+            const handleMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+            const handle = new THREE.Mesh(handleGeo, handleMat);
+            handle.position.y = 0.3;
+            axeGroup.add(handle);
+
+            const bladeGeo = new THREE.BoxGeometry(0.35, 0.25, 0.06);
+            const bladeMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
+            const blade = new THREE.Mesh(bladeGeo, bladeMat);
+            blade.position.set(0.12, 0.65, 0);
+            axeGroup.add(blade);
+            axeGroup.position.set(0.45, 0.8, 0.2);
+            axeGroup.rotation.x = Math.PI / 4;
+
+            // 2. Cuốc Đá (Pickaxe)
+            pickaxeGroup = new THREE.Group();
+            const pHandle = new THREE.Mesh(handleGeo, handleMat);
+            pHandle.position.y = 0.3;
+            pickaxeGroup.add(pHandle);
+
+            const pHeadGeo = new THREE.BoxGeometry(0.6, 0.08, 0.08);
+            const pHeadMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.7 });
+            const pHead = new THREE.Mesh(pHeadGeo, pHeadMat);
+            pHead.position.set(0, 0.7, 0);
+            pickaxeGroup.add(pHead);
+            pickaxeGroup.position.set(0.45, 0.8, 0.2);
+            pickaxeGroup.rotation.x = Math.PI / 4;
+
+            // 3. Kiếm Thép (Sword)
+            swordGroup = new THREE.Group();
+            const sBladeGeo = new THREE.BoxGeometry(0.08, 1.1, 0.04);
+            const sBladeMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.9, roughness: 0.1, emissive: 0x0284c7 });
+            const sBlade = new THREE.Mesh(sBladeGeo, sBladeMat);
+            sBlade.position.y = 0.55;
+            swordGroup.add(sBlade);
+
+            const hiltGeo = new THREE.BoxGeometry(0.28, 0.06, 0.08);
+            const hiltMat = new THREE.MeshStandardMaterial({ color: 0xd97706 });
+            const hilt = new THREE.Mesh(hiltGeo, hiltMat);
+            swordGroup.add(hilt);
+            swordGroup.position.set(0.45, 0.8, 0.2);
+            swordGroup.rotation.x = Math.PI / 4;
+
+            // Mặc định gắn Rìu
+            toolMesh = axeGroup;
+            playerModel.add(toolMesh);
+        }
+
+        function createPlayer() {
+            playerGroup = new THREE.Group();
+            playerGroup.position.set(0, getTerrainHeight(0, 0), 0);
+
+            playerModel = new THREE.Group();
+            playerModel.position.y = 0.6;
+            
+            // Chest / Body Armor
+            const bodyGeo = new THREE.CylinderGeometry(0.35, 0.28, 0.9, 12);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.95;
+            body.castShadow = true;
+            playerModel.add(body);
+
+            // Belt
+            const beltGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.12, 12);
+            const beltMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.8 });
+            const belt = new THREE.Mesh(beltGeo, beltMat);
+            belt.position.y = 0.55;
+            playerModel.add(belt);
+
+            // Head
+            const headGeo = new THREE.SphereGeometry(0.3, 16, 16);
+            const headMat = new THREE.MeshStandardMaterial({ color: 0xffedd5 });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.set(0, 1.6, 0);
+            head.castShadow = true;
+            playerModel.add(head);
+
+            // Helmet/Hat
+            const hatGeo = new THREE.ConeGeometry(0.42, 0.35, 8);
+            const hatMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.4 });
+            const hat = new THREE.Mesh(hatGeo, hatMat);
+            hat.position.set(0, 1.88, 0);
+            playerModel.add(hat);
+
+            // Eyes
+            const eyeGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+            const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+            const eyeLeft = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeLeft.position.set(-0.1, 1.63, 0.26);
+            const eyeRight = new THREE.Mesh(eyeGeo, eyeMat);
+            eyeRight.position.set(0.1, 1.63, 0.26);
+            playerModel.add(eyeLeft);
+            playerModel.add(eyeRight);
+
+            // Arms
+            const armGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.6, 8);
+            const armMat = new THREE.MeshStandardMaterial({ color: 0x2563eb });
+            
+            leftArm = new THREE.Mesh(armGeo, armMat);
+            leftArm.position.set(-0.48, 1.1, 0);
+            leftArm.castShadow = true;
+            playerModel.add(leftArm);
+
+            rightArm = new THREE.Mesh(armGeo, armMat);
+            rightArm.position.set(0.48, 1.1, 0);
+            rightArm.castShadow = true;
+            playerModel.add(rightArm);
+
+            // Legs & Boots
+            const legGeo = new THREE.CylinderGeometry(0.1, 0.09, 0.6, 8);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+            
+            leftLeg = new THREE.Group();
+            const lLegMesh = new THREE.Mesh(legGeo, legMat);
+            lLegMesh.position.y = -0.3;
+            lLegMesh.castShadow = true;
+            leftLeg.add(lLegMesh);
+
+            const bootGeo = new THREE.BoxGeometry(0.2, 0.15, 0.3);
+            const bootMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+            const lBoot = new THREE.Mesh(bootGeo, bootMat);
+            lBoot.position.set(0, -0.55, 0.05);
+            leftLeg.add(lBoot);
+
+            leftLeg.position.set(-0.18, 0.6, 0);
+            playerModel.add(leftLeg);
+
+            rightLeg = new THREE.Group();
+            const rLegMesh = new THREE.Mesh(legGeo, legMat);
+            rLegMesh.position.y = -0.3;
+            rLegMesh.castShadow = true;
+            rightLeg.add(rLegMesh);
+
+            const rBoot = new THREE.Mesh(bootGeo, bootMat);
+            rBoot.position.set(0, -0.55, 0.05);
+            rightLeg.add(rBoot);
+
+            rightLeg.position.set(0.18, 0.6, 0);
+            playerModel.add(rightLeg);
+
+            // Tạo danh sách các công cụ (Rìu, Cuốc, Kiếm)
+            createTools();
+
+            playerGroup.add(playerModel);
+            scene.add(playerGroup);
+        }
+
+        // --- HARVESTING & INTERACTION ---
+        function handlePlayerAttackOrBuild() {
+            if (state.isDead || isAttacking) return;
+
+            // Nếu slot là công trình (4: Shelter, 5: Arrow Tower, 6: Magic Tower, 7: Spike Trap) -> Đặt công trình
+            if ([4, 5, 6, 7].includes(state.activeSlot)) {
+                placeBuilding();
+                return;
+            }
+
+            isAttacking = true;
+            const originalRot = toolMesh ? toolMesh.rotation.z : 0;
+            
+            let hitTarget = false;
+
+            // Attack Enemies
+            enemies.forEach((enemy) => {
+                const dist = playerGroup.position.distanceTo(enemy.mesh.position);
+                if (dist < 2.5) {
+                    hitTarget = true;
+                    // Kiếm (slot 3) gây sát thương cao nhất
+                    const dmg = state.activeSlot === 3 ? state.atkDamage : 15;
+                    enemy.hp -= dmg;
+                    spawnDamageText(enemy.mesh.position, dmg, "#ff4444");
+                    
+                    const dir = enemy.mesh.position.clone().sub(playerGroup.position).normalize();
+                    enemy.mesh.position.addScaledVector(dir, 0.8);
+
+                    if (enemy.hp <= 0) killEnemy(enemy);
+                }
+            });
+
+            // Harvest Trees/Rocks
+            if (!hitTarget) {
+                resources.forEach((res) => {
+                    const dist = playerGroup.position.distanceTo(res.mesh.position);
+                    if (dist < 2.8) {
+                        if (res.type === 'tree' && state.activeSlot === 1) { // Rìu chặt cây
+                            res.hp -= 20;
+                            state.wood += 5;
+                            spawnDamageText(res.mesh.position, "+5 Gỗ", "#d97706");
+                        } else if (res.type === 'rock' && state.activeSlot === 2) { // Cuốc đập đá
+                            res.hp -= 25;
+                            state.stone += 4;
+                            spawnDamageText(res.mesh.position, "+4 Đá", "#94a3b8");
+                            if (Math.random() < 0.25) {
+                                state.crystal += 1;
+                                spawnDamageText(res.mesh.position, "+1 Đá Phép!", "#c084fc");
+                            }
+                        } else {
+                            // Dùng công cụ sai loại vẫn gây sát thương nhẹ
+                            res.hp -= 8;
+                        }
+
+                        if (res.hp <= 0) {
+                            scene.remove(res.mesh);
+                            resources.splice(resources.indexOf(res), 1);
+                        }
+                    }
+                });
+            }
+
+            // Hoạt ảnh vung cuốc / rìu / kiếm (Kiểm tra an toàn cho toolMesh)
+            let swingProgress = 0;
+            const swingInterval = setInterval(() => {
+                swingProgress += 0.2;
+                if (toolMesh) {
+                    toolMesh.rotation.z = Math.sin(swingProgress * Math.PI) * 1.6;
+                    toolMesh.rotation.x = Math.PI / 4 + Math.sin(swingProgress * Math.PI) * 0.8;
+                }
+                if (swingProgress >= 1) {
+                    clearInterval(swingInterval);
+                    if (toolMesh) {
+                        toolMesh.rotation.z = originalRot;
+                        toolMesh.rotation.x = Math.PI / 4;
+                    }
+                    isAttacking = false;
+                }
+            }, 30);
+        }
+
+        function handleHarvestOrInteract() {
+            // 0. Nhặt Vật Phẩm Rơi từ Quái vật gần đó
+            let pickedLoot = false;
+            for (let i = droppedItems.length - 1; i >= 0; i--) {
+                const loot = droppedItems[i];
+                const dist = playerGroup.position.distanceTo(loot.mesh.position);
+                if (dist < 3.0) {
+                    if (loot.type === 'food') { state.food += loot.amount; showNotification(`🎁 Nhặt được +${loot.amount} Thức ăn!`); }
+                    else if (loot.type === 'crystal') { state.crystal += loot.amount; showNotification(`💎 Nhặt được +${loot.amount} Đá Phép!`); }
+                    else if (loot.type === 'wood') { state.wood += loot.amount * 5; showNotification(`🪵 Nhặt được +${loot.amount * 5} Gỗ!`); }
+                    else if (loot.type === 'stone') { state.stone += loot.amount * 4; showNotification(`🪨 Nhặt được +${loot.amount * 4} Đá!`); }
+
+                    scene.remove(loot.mesh);
+                    droppedItems.splice(i, 1);
+                    pickedLoot = true;
+                    break;
+                }
+            }
+
+            // 1. Kiểm tra Uống nước từ Giếng Nước gần đó
+            let drank = false;
+            if (!pickedLoot) {
+                wells.forEach(w => {
+                    const dist = playerGroup.position.distanceTo(w.mesh.position);
+                    if (dist < 3.2) {
+                        state.thirst = state.maxThirst;
+                        state.hp = Math.min(state.maxHp, state.hp + 20);
+                        spawnDamageText(playerGroup.position, "Đã uống nước! Khát: 100%", "#38bdf8");
+                        showNotification("💧 Bạn đã uống nước mát từ Giếng! Thanh Khát đã đầy.");
+                        drank = true;
+                    }
+                });
+            }
+
+            // 2. Thu hoạch Thức ăn/Trái cây gần đó
+            if (!pickedLoot && !drank) {
+                resources.forEach((res) => {
+                    const dist = playerGroup.position.distanceTo(res.mesh.position);
+                    if (dist < 3) {
+                        state.food += 2;
+                        spawnDamageText(playerGroup.position, "+2 Thức ăn", "#4ade80");
+                    }
+                });
+            }
+            updateUI();
+        }
+
+        function placeBuilding() {
+            const buildPos = playerGroup.position.clone().add(
+                new THREE.Vector3(0,0,-3.5).applyAxisAngle(new THREE.Vector3(0,1,0), playerGroup.rotation.y)
+            );
+
+            if (state.activeSlot === 4) { // Shelter / Nhà Trú
+                if (state.shelters <= 0) { showNotification("Bạn chưa chế tạo Nhà Trú!"); return; }
+                state.shelters--;
+                createShelterMesh(buildPos.x, buildPos.z);
+            } else if (state.activeSlot === 5) { // Arrow Tower
+                if (state.towersArrow <= 0) { showNotification("Bạn chưa chế tạo Tháp Tên!"); return; }
+                state.towersArrow--;
+                createTowerMesh(buildPos.x, buildPos.z, 'arrow');
+            } else if (state.activeSlot === 6) { // Magic Tower
+                if (state.towersMagic <= 0) { showNotification("Bạn chưa chế tạo Tháp Phép!"); return; }
+                state.towersMagic--;
+                createTowerMesh(buildPos.x, buildPos.z, 'magic');
+            } else if (state.activeSlot === 7) { // Spike Trap
+                if (state.trapsSpike <= 0) { showNotification("Bạn chưa chế tạo Bẫy Gai!"); return; }
+                state.trapsSpike--;
+                createSpikeTrapMesh(buildPos.x, buildPos.z);
+            }
+            updateUI();
+        }
+
+        function createSpikeTrapMesh(x, z) {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            const baseGeo = new THREE.BoxGeometry(2, 0.1, 2);
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            group.add(base);
+
+            // Spikes
+            for(let i = -0.6; i <= 0.6; i += 0.4) {
+                for(let j = -0.6; j <= 0.6; j += 0.4) {
+                    const spikeGeo = new THREE.ConeGeometry(0.1, 0.5, 4);
+                    const spikeMat = new THREE.MeshStandardMaterial({ color: 0xe11d48, metalness: 0.8 });
+                    const spike = new THREE.Mesh(spikeGeo, spikeMat);
+                    spike.position.set(i, 0.3, j);
+                    group.add(spike);
+                }
+            }
+
+            scene.add(group);
+            buildings.push({ type: 'trap_spike', mesh: group, x: x, z: z });
+            showNotification("Đã đặt Bẫy Gai Đất!");
+        }
+
+        function consumeFood() {
+            if (state.food >= 1) {
+                state.food--;
+                state.hunger = Math.min(state.maxHunger, state.hunger + 30);
+                state.hp = Math.min(state.maxHp, state.hp + 15);
+                showNotification("Đã ăn thức ăn! Đói +30, HP +15");
+                updateUI();
+            } else {
+                showNotification("Không đủ Thức ăn!");
+            }
+        }
+
+        function setupEventListeners() {
+            const keys = {};
+            window.addEventListener('keydown', (e) => {
+                keys[e.code] = true;
+                if (e.code === 'KeyE') handleHarvestOrInteract();
+                // Phím G, B hoặc TAB dùng để bật/tắt Kho đồ
+                if (e.code === 'KeyG' || e.code === 'KeyB' || e.code === 'Tab') { e.preventDefault(); toggleCraftingModal(); }
+                if (e.code === 'KeyH') toggleGuideModal();
+                if (['Digit1','Digit2','Digit3','Digit4','Digit5','Digit6','Digit7'].includes(e.code)) {
+                    selectSlot(parseInt(e.code.replace('Digit','')));
+                }
+            });
+            window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+            window.addEventListener('mousedown', (e) => {
+                isMouseDown = true;
+                if (e.button === 0 && !e.target.closest('#hud') && !e.target.closest('#crafting-modal') && !e.target.closest('#guide-modal')) {
+                    handlePlayerAttackOrBuild();
+                }
+            });
+            window.addEventListener('mouseup', () => { isMouseDown = false; });
+            window.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Chỉ cho phép xoay camera khi NHẤN GIỮ CHUỘT + Tăng độ nhạy lên vừa phải
+            window.addEventListener('mousemove', (e) => {
+                if (isMouseDown && !e.target.closest('#hud') && !e.target.closest('#crafting-modal') && !e.target.closest('#guide-modal')) {
+                    const sensitivity = 0.0028; // Tăng độ nhạy xoay chuột giúp phản hồi nhanh và nhạy hơn
+                    cameraAngleX -= e.movementX * sensitivity;
+                    cameraAngleY = Math.max(0.05, Math.min(1.3, cameraAngleY + e.movementY * sensitivity));
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            state.keys = keys;
+        }
+
+        function updateUI() {
+            document.getElementById('player-lvl').innerText = state.lvl;
+            document.getElementById('xp-text').innerText = `XP: ${state.xp}/${state.xpToNextLvl}`;
+            document.getElementById('xp-bar').style.width = `${(state.xp/state.xpToNextLvl)*100}%`;
+
+            document.getElementById('hp-text').innerText = `${Math.ceil(state.hp)}/${state.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${(state.hp/state.maxHp)*100}%`;
+
+            document.getElementById('hunger-text').innerText = `${Math.ceil(state.hunger)}/${state.maxHunger}`;
+            document.getElementById('hunger-bar').style.width = `${(state.hunger/state.maxHunger)*100}%`;
+
+            document.getElementById('thirst-text').innerText = `${Math.ceil(state.thirst)}/${state.maxThirst}`;
+            document.getElementById('thirst-bar').style.width = `${(state.thirst/state.maxThirst)*100}%`;
+
+            document.getElementById('stamina-text').innerText = `${Math.ceil(state.stamina)}/${state.maxStamina}`;
+            document.getElementById('stamina-bar').style.width = `${(state.stamina/state.maxStamina)*100}%`;
+
+            document.getElementById('res-wood').innerText = state.wood;
+            document.getElementById('res-stone').innerText = state.stone;
+            document.getElementById('res-food').innerText = state.food;
+            document.getElementById('res-crystal').innerText = state.crystal;
+
+            document.getElementById('wave-num').innerText = state.wave;
+            document.getElementById('wave-timer').innerText = Math.ceil(state.waveTimer);
+        }
+
+        function spawnWaveEnemies() {
+            const count = 3 + state.wave * 2;
+            showNotification(`⚠️ ĐỢT QUÁI WAVE ${state.wave} XUẤT HIỆN! (${count} Con)`);
+            for (let i = 0; i < count; i++) {
+                const pos = getRandomIslandPosition(35, 55);
+                const enemyGroup = new THREE.Group();
+                const terrainY = getTerrainHeight(pos.x, pos.z);
+                enemyGroup.position.set(pos.x, terrainY, pos.z);
+
+                // Body Armor / Upper Torso
+                const bodyGeo = new THREE.CylinderGeometry(0.45, 0.25, 1.3, 8);
+                const bodyMat = new THREE.MeshStandardMaterial({ color: 0x450a0a, roughness: 0.4 });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 0.7;
+                body.castShadow = true;
+                enemyGroup.add(body);
+
+                // Head
+                const headGeo = new THREE.SphereGeometry(0.28, 12, 12);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.6 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.set(0, 1.45, 0);
+                head.castShadow = true;
+                enemyGroup.add(head);
+
+                // Glowing Red Eyes
+                const eyeGeo = new THREE.BoxGeometry(0.09, 0.06, 0.09);
+                const eyeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+                const eyeLeft = new THREE.Mesh(eyeGeo, eyeMat);
+                eyeLeft.position.set(-0.1, 1.48, 0.23);
+                const eyeRight = new THREE.Mesh(eyeGeo, eyeMat);
+                eyeRight.position.set(0.1, 1.48, 0.23);
+                enemyGroup.add(eyeLeft);
+                enemyGroup.add(eyeRight);
+
+                // Devil Horns
+                const hornGeo = new THREE.ConeGeometry(0.08, 0.35, 4);
+                const hornMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8 });
+                const hornL = new THREE.Mesh(hornGeo, hornMat);
+                hornL.position.set(-0.18, 1.75, 0);
+                hornL.rotation.z = -0.3;
+                const hornR = new THREE.Mesh(hornGeo, hornMat);
+                hornR.position.set(0.18, 1.75, 0);
+                hornR.rotation.z = 0.3;
+                enemyGroup.add(hornL);
+                enemyGroup.add(hornR);
+
+                // Claws / Arms
+                const armGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.7, 6);
+                const armMat = new THREE.MeshStandardMaterial({ color: 0x27272a });
+                const armL = new THREE.Mesh(armGeo, armMat);
+                armL.position.set(-0.5, 0.8, 0.1);
+                armL.rotation.x = 0.5;
+                const armR = new THREE.Mesh(armGeo, armMat);
+                armR.position.set(0.5, 0.8, 0.1);
+                armR.rotation.x = 0.5;
+                enemyGroup.add(armL);
+                enemyGroup.add(armR);
+
+                scene.add(enemyGroup);
+                enemies.push({
+                    mesh: enemyGroup,
+                    armL: armL,
+                    armR: armR,
+                    hp: 60 + state.wave * 15,
+                    maxHp: 60 + state.wave * 15,
+                    atk: 8 + state.wave * 2,
+                    atkCd: 0
+                });
+            }
+        }
+
+        function gameTick() {
+            if (state.isDead) return;
+
+            // Survival stats decay
+            state.hunger = Math.max(0, state.hunger - 0.5);
+            state.thirst = Math.max(0, state.thirst - 0.7);
+
+            // Khi Thức ăn và Nước uống cùng giảm, Thể lực cũng sẽ giảm theo
+            if (state.hunger < state.maxHunger || state.thirst < state.maxThirst) {
+                state.stamina = Math.max(0, state.stamina - 0.8);
+            } else {
+                // Hồi phục lại Thể lực dần dần nếu Thức ăn và Nước uống đầy đủ
+                state.stamina = Math.min(state.maxStamina, state.stamina + 1.0);
+            }
+
+            if (state.hunger === 0 || state.thirst === 0) {
+                state.hp = Math.max(0, state.hp - 3);
+            }
+
+            if (state.hp <= 0) {
+                state.isDead = true;
+                document.getElementById('final-wave').innerText = state.wave;
+                document.getElementById('final-lvl').innerText = state.lvl;
+                document.getElementById('game-over-modal').classList.remove('hidden');
+                return;
+            }
+
+            // Wave timer
+            state.waveTimer--;
+            if (state.waveTimer <= 0) {
+                state.isNight = !state.isNight;
+                if (state.isNight) {
+                    state.waveTimer = CONFIG.nightDuration;
+                    document.getElementById('time-icon').innerHTML = '<i class="fa-solid fa-moon text-indigo-400"></i>';
+                    document.getElementById('time-text').innerText = 'BAN ĐÊM 00:00';
+                    spawnWaveEnemies();
+                } else {
+                    state.wave++;
+                    state.waveTimer = CONFIG.dayDuration;
+                    document.getElementById('time-icon').innerHTML = '<i class="fa-solid fa-sun text-amber-400"></i>';
+                    document.getElementById('time-text').innerText = 'BAN NGÀY 12:00';
+                }
+            }
+
+            updateUI();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+
+            if (!state.isDead) {
+                // Movement logic
+                const moveSpeed = (state.keys['ShiftLeft'] || state.keys['ShiftRight']) && state.stamina > 5 ? 8 : 4.5;
+                let moveX = 0, moveZ = 0;
+
+                if (state.keys['KeyW'] || state.keys['ArrowUp']) moveZ -= 1;
+                if (state.keys['KeyS'] || state.keys['ArrowDown']) moveZ += 1;
+                if (state.keys['KeyA'] || state.keys['ArrowLeft']) moveX -= 1;
+                if (state.keys['KeyD'] || state.keys['ArrowRight']) moveX += 1;
+
+                if (moveX !== 0 || moveZ !== 0) {
+                    const angle = cameraAngleX + Math.atan2(moveX, moveZ);
+                    playerGroup.rotation.y = angle;
+                    playerGroup.position.x += Math.sin(angle) * moveSpeed * delta;
+                    playerGroup.position.z += Math.cos(angle) * moveSpeed * delta;
+
+                    // Bound on Island
+                    const dist = Math.hypot(playerGroup.position.x, playerGroup.position.z);
+                    if (dist > CONFIG.worldSize * 0.45) {
+                        playerGroup.position.setLength(CONFIG.worldSize * 0.45);
+                    }
+
+                    // Walking animation
+                    const walkCycle = clock.getElapsedTime() * 10;
+                    leftLeg.rotation.x = Math.sin(walkCycle) * 0.6;
+                    rightLeg.rotation.x = -Math.sin(walkCycle) * 0.6;
+                    playerModel.position.y = 0.6 + Math.abs(Math.sin(walkCycle)) * 0.08;
+                } else {
+                    leftLeg.rotation.x = 0;
+                    rightLeg.rotation.x = 0;
+                    playerModel.position.y = 0.6;
+                }
+
+                // Snap Player Y to Terrain Height
+                playerGroup.position.y = getTerrainHeight(playerGroup.position.x, playerGroup.position.z);
+
+                // Update Camera Third Person
+                const camDist = 7;
+                camera.position.x = playerGroup.position.x + Math.sin(cameraAngleX) * camDist * Math.cos(cameraAngleY);
+                camera.position.y = playerGroup.position.y + Math.sin(cameraAngleY) * camDist + 1.8;
+                camera.position.z = playerGroup.position.z + Math.cos(cameraAngleX) * camDist * Math.cos(cameraAngleY);
+                camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.2, playerGroup.position.z);
+                // Animate Dropped Items (Xoay và phấp phới)
+                droppedItems.forEach(item => {
+                    item.rot += delta * 2;
+                    item.mesh.rotation.y = item.rot;
+                    item.mesh.position.y = getTerrainHeight(item.x, item.z) + 0.3 + Math.sin(item.rot * 2) * 0.1;
+                });
+
+                // Tower Defense & Spike Trap AI
+                buildings.forEach(b => {
+                    if (b.type.startsWith('tower')) {
+                        b.atkCd = (b.atkCd || 0) + delta;
+                        if (b.atkCd > 1.2) {
+                            enemies.forEach(e => {
+                                if (b.mesh.position.distanceTo(e.mesh.position) < 12) {
+                                    const dmg = b.type === 'tower_magic' ? 45 : 25;
+                                    e.hp -= dmg;
+                                    b.atkCd = 0;
+                                    spawnDamageText(e.mesh.position, `-${dmg}`, b.type === 'tower_magic' ? "#c084fc" : "#34d399");
+                                    if (e.hp <= 0) killEnemy(e);
+                                }
+                            });
+                        }
+                    } else if (b.type === 'trap_spike') {
+                        enemies.forEach(e => {
+                            if (b.mesh.position.distanceTo(e.mesh.position) < 1.5) {
+                                e.hp -= 30 * delta; // Gây sát thương liên tục khi giẫm phải bẫy
+                                spawnDamageText(e.mesh.position, "-30", "#e11d48");
+                                if (e.hp <= 0) killEnemy(e);
+                            }
+                        });
+                    }
+                });
+
+                // Enemy AI Movement & Attack Logic
+                enemies.forEach(enemy => {
+                    const distToPlayer = enemy.mesh.position.distanceTo(playerGroup.position);
+                    
+                    // Xoay mặt và di chuyển áp sát nhân vật
+                    enemy.mesh.lookAt(playerGroup.position.x, enemy.mesh.position.y, playerGroup.position.z);
+
+                    if (distToPlayer > 1.8) {
+                        const dir = playerGroup.position.clone().sub(enemy.mesh.position).normalize();
+                        const speed = 2.5 + state.wave * 0.2;
+                        enemy.mesh.position.x += dir.x * speed * delta;
+                        enemy.mesh.position.z += dir.z * speed * delta;
+                        
+                        // Khớp Y theo mặt đất
+                        enemy.mesh.position.y = getTerrainHeight(enemy.mesh.position.x, enemy.mesh.position.z);
+                    } else {
+                        // Tấn công nhân vật khi ở khoảng cách gần
+                        enemy.atkCd = (enemy.atkCd || 0) + delta;
+                        if (enemy.atkCd >= 1.2) {
+                            enemy.atkCd = 0;
+                            state.hp = Math.max(0, state.hp - enemy.atk);
+                            spawnDamageText(playerGroup.position, `-${enemy.atk} HP`, "#ef4444");
+                            updateUI();
+
+                            // Hoạt ảnh cào tay của quái
+                            if (enemy.armL && enemy.armR) {
+                                enemy.armL.rotation.x = -1.2;
+                                enemy.armR.rotation.x = -1.2;
+                                setTimeout(() => {
+                                    if (enemy.armL && enemy.armR) {
+                                        enemy.armL.rotation.x = 0.5;
+                                        enemy.armR.rotation.x = 0.5;
+                                    }
+                                }, 250);
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Render 3D Scene
+            renderer.render(scene, camera);
+        }
+
+        // --- UI & HELPER FUNCTIONS ---
+        function selectSlot(slotNum) {
+            state.activeSlot = slotNum;
+            document.querySelectorAll('.item-slot').forEach(el => el.classList.remove('active'));
+            const activeEl = document.querySelector(`.item-slot[data-slot="${slotNum}"]`);
+            if (activeEl) activeEl.classList.add('active');
+
+            if (playerModel) {
+                if (toolMesh) playerModel.remove(toolMesh);
+                if (slotNum === 1) toolMesh = axeGroup;
+                else if (slotNum === 2) toolMesh = pickaxeGroup;
+                else if (slotNum === 3) toolMesh = swordGroup;
+                else toolMesh = null;
+
+                if (toolMesh) playerModel.add(toolMesh);
+            }
+        }
+
+        function craftItem(type) {
+            if (type === 'shelter') {
+                if (state.wood >= 25 && state.stone >= 15) {
+                    state.wood -= 25; state.stone -= 15; state.shelters++;
+                    showNotification("🔨 Chế tạo thành công Nhà Trú Ẩn! (Dùng slot 4 để đặt)");
+                } else showNotification("Không đủ tài nguyên chế tạo Nhà Trú!");
+            } else if (type === 'well') {
+                if (state.stone >= 20 && state.wood >= 10) {
+                    state.stone -= 20; state.wood -= 10;
+                    const buildPos = playerGroup.position.clone().add(
+                        new THREE.Vector3(0,0,-3).applyAxisAngle(new THREE.Vector3(0,1,0), playerGroup.rotation.y)
+                    );
+                    createWell(buildPos.x, buildPos.z);
+                    showNotification("🚰 Đã xây dựng Giếng Nước Sạch!");
+                } else showNotification("Không đủ tài nguyên xây Giếng Nước!");
+            } else if (type === 'tower_arrow') {
+                if (state.wood >= 15 && state.stone >= 10) {
+                    state.wood -= 15; state.stone -= 10; state.towersArrow++;
+                    showNotification("🏹 Chế tạo thành công Tháp Tên! (Dùng slot 5 để đặt)");
+                } else showNotification("Không đủ tài nguyên chế tạo Tháp Tên!");
+            } else if (type === 'tower_magic') {
+                if (state.wood >= 20 && state.stone >= 25 && state.crystal >= 2) {
+                    state.wood -= 20; state.stone -= 25; state.crystal -= 2; state.towersMagic++;
+                    showNotification("🔮 Chế tạo thành công Tháp Phép! (Dùng slot 6 để đặt)");
+                } else showNotification("Không đủ tài nguyên chế tạo Tháp Phép!");
+            } else if (type === 'trap_spike') {
+                if (state.wood >= 10 && state.stone >= 15) {
+                    state.wood -= 10; state.stone -= 15; state.trapsSpike++;
+                    showNotification("⚙️ Chế tạo thành công Bẫy Gai! (Dùng slot 7 để đặt)");
+                } else showNotification("Không đủ tài nguyên chế tạo Bẫy Gai!");
+            } else if (type === 'upgrade_sword') {
+                if (state.stone >= 30 && state.crystal >= 5) {
+                    state.stone -= 30; state.crystal -= 5;
+                    state.atkDamage += 15;
+                    showNotification("⚔️ Nâng cấp Kiếm Cổ Đại thành công! Sát thương +15.");
+                } else showNotification("Không đủ Đá hoặc Đá Phép!");
+            }
+            updateUI();
+        }
+
+        function createShelterMesh(x, z) {
+            const group = new THREE.Group();
+            const terrainY = getTerrainHeight(x, z);
+            group.position.set(x, terrainY, z);
+
+            const wallGeo = new THREE.BoxGeometry(3.5, 2, 3.5);
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+            const walls = new THREE.Mesh(wallGeo, wallMat);
+            walls.position.y = 1;
+            walls.castShadow = true;
+            group.add(walls);
+
+            const roofGeo = new THREE.ConeGeometry(3, 1.5, 4);
+            roofGeo.rotateY(Math.PI / 4);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0xd97706 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.y = 2.75;
+            group.add(roof);
+
+            scene.add(group);
+            buildings.push({ type: 'shelter', mesh: group, x: x, z: z });
+            showNotification("Đã dựng Nhà Trú Ẩn!");
+        }
+
+        function showNotification(text) {
+            const container = document.getElementById('notif-container');
+            if (!container) return;
+            const notif = document.createElement('div');
+            notif.className = 'glass-panel px-2.5 py-1 rounded-md text-[11px] font-semibold text-amber-300 border-amber-400/30 transition-all duration-300 animate-fade-in shadow-md text-right';
+            notif.innerText = text;
+            container.appendChild(notif);
+
+            if (container.children.length > 4) {
+                container.removeChild(container.firstChild);
+            }
+
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                setTimeout(() => notif.remove(), 300);
+            }, 3000);
+        }
+
+        function spawnDamageText(pos, text, color = "#ffffff") {
+            const el = document.createElement('div');
+            el.className = 'damage-text text-sm';
+            el.style.color = color;
+            el.innerText = text;
+
+            const vector = pos.clone().project(camera);
+            const x = (vector.x * .5 + .5) * window.innerWidth;
+            const y = (-(vector.y * .5) + .5) * window.innerHeight;
+
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            document.body.appendChild(el);
+
+            setTimeout(() => el.remove(), 800);
+        }
+
+        function toggleCraftingModal() {
+            const modal = document.getElementById('crafting-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function toggleGuideModal() {
+            const modal = document.getElementById('guide-modal');
+            modal.classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>
